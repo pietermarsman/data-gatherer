@@ -3,3 +3,4 @@ google-api-python-client==1.6.4
 py2neo==3.1.2
 dateparser==0.6.0
 neomodel==3.2.5
+pandas==0.22.0

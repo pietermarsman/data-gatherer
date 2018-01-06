@@ -6,4 +6,4 @@ config.DATABASE_URL = 'bolt://neo4j:neo4j@localhost:7687'  # default
 
 
 class Thing(StructuredNode):
-    name = StringProperty()
+    name = StringProperty(required=True)

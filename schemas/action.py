@@ -1,12 +1,9 @@
-from neomodel import DateTimeProperty
 from neomodel import FloatProperty
 from neomodel import Relationship
-from neomodel import RelationshipTo
-from neomodel import config, StructuredNode
+from neomodel import StructuredNode
 
+from intangible import BankAccount
 from thing import Thing
-
-config.DATABASE_URL = 'bolt://neo4j:neo4j@localhost:7687'  # default
 
 
 class Action(Thing):
@@ -19,3 +16,7 @@ class TradeAction(Action):
 
 class BuyFuelAction(TradeAction):
     volume = FloatProperty(required=True)
+
+
+class BankTransferAction(TradeAction):
+    account = Relationship(BankAccount, 'ON_ACCOUNT')

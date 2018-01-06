@@ -4,13 +4,12 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime
 
-import dateparser as dateparser
-import datetime
 import httplib2
 import luigi
-import time
 from apiclient import discovery
+from dateutil import parser
 from neomodel import db, StructuredNode
 from oauth2client import client, tools
 from oauth2client.file import Storage
@@ -21,6 +20,8 @@ from intangible import Measurement, CarKilometers
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = '../reference/client_secret.json'
 APPLICATION_NAME = 'Google Sheets API Python Quickstart'
+
+DATA_DIR = os.path.join(os.path.expanduser('~'), "Data", "personal")
 
 
 def get_google_credentials():
@@ -67,7 +68,7 @@ def sanitize_str(s):
 
 
 def get_time_node(dt, resolution="Minute"):
-    c = dt - datetime.datetime(1970, 1, 1)
+    c = dt - datetime(1970, 1, 1)
     t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
     query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
     results, meta = db.cypher_query(query)
@@ -79,10 +80,11 @@ class DownloadFuelFromDrive(luigi.Task):
     range = luigi.Parameter()
 
     def output(self):
-        homedir = os.path.expanduser('~')
-        dir = os.path.join(homedir, "Data", "personal")
-        path = os.path.join(dir, "FuelTask_%s_%s.json" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range)))
-        return luigi.LocalTarget(path)
+        month_name = "%.4d%.2d" % (datetime.now().year, datetime.now().month)
+        sheet_name = "%s_%s" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
+        file_name = "%s_%s.json" % (month_name, sheet_name)
+        dir = os.path.join(DATA_DIR, "DownloadFuelFromDrive", file_name)
+        return luigi.LocalTarget(dir)
 
     def run(self):
         sheets = get_service().spreadsheets().values()
@@ -91,7 +93,7 @@ class DownloadFuelFromDrive(luigi.Task):
         values = result.get('values', [])
         data = [{k: v for k, v in zip(values[0], values_iter)} for values_iter in values[1:]]
         for record in data:
-            record['Timestamp'] = dateparser.parse(record['Timestamp']).isoformat()
+            record['Timestamp'] = datetime.strptime(record['Timestamp'], "%d/%m/%Y %H:%M:%S").isoformat()
             record['Aantal liter'] = float(record['Aantal liter'])
             record['Prijs'] = float(record['Prijs'])
             record['Kilometerstand'] = float(record['Kilometerstand'])
@@ -108,17 +110,18 @@ class LoadFuelInGraph(luigi.Task):
         return [DownloadFuelFromDrive(spreadsheet_id=self.spreadsheet_id, range=self.range)]
 
     def output(self):
-        homedir = os.path.expanduser('~')
-        dir = os.path.join(homedir, "Data", "personal")
-        path = os.path.join(dir, "load_fuel_in_graph.log")
+        path = os.path.join(DATA_DIR, "load_fuel_in_graph.log")
         return luigi.LocalTarget(path)
 
     def run(self):
         with self.input()[0].open() as f:
             data = json.load(f)
 
+        with self.output().open('w') as f:
+            f.write('Read %d records' % len(data))
+
         for record in data:
-            raw_dt_node = get_time_node(dateparser.parse(record['Timestamp']))
+            raw_dt_node = get_time_node(parser.parse(record['Timestamp']))
             dt_node = StructuredNode.inflate(raw_dt_node)
 
             action = BuyFuelAction.get_or_create({
@@ -135,8 +138,6 @@ class LoadFuelInGraph(luigi.Task):
             measurement.datetime.connect(dt_node)
 
 
-        with self.output().open('w') as f:
-            f.write('Done')
 
 if __name__ == "__main__":
     try:

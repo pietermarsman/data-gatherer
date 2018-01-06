@@ -1,7 +1,7 @@
-from neomodel import DateTimeProperty, StructuredNode
 from neomodel import FloatProperty
 from neomodel import Relationship
 from neomodel import StringProperty
+from neomodel import StructuredNode
 
 from thing import Thing
 
@@ -22,3 +22,7 @@ class Measurement(Intangible):
     datetime = Relationship(StructuredNode, "AT")
     metric = Relationship(Metric, "MEASURED")
     value = FloatProperty(required=True)
+
+
+class BankAccount(Intangible):
+    pass
