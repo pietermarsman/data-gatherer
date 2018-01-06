@@ -6,11 +6,17 @@ import os
 import re
 
 import dateparser as dateparser
+import datetime
 import httplib2
 import luigi
+import time
 from apiclient import discovery
+from neomodel import db, StructuredNode
 from oauth2client import client, tools
 from oauth2client.file import Storage
+
+from action import BuyFuelAction
+from intangible import Measurement, CarKilometers
 
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = '../reference/client_secret.json'
@@ -57,15 +63,24 @@ def get_service():
 
 
 def sanitize_str(s):
-    return re.sub("\W", "_", s)
+    return re.sub("\W", "_", s).lower()
 
 
-class FuelTask(luigi.Task):
+def get_time_node(dt, resolution="Minute"):
+    c = dt - datetime.datetime(1970, 1, 1)
+    t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
+    query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
+    results, meta = db.cypher_query(query)
+    return results[0][0]
+
+
+class DownloadFuelFromDrive(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
 
     def output(self):
-        dir = os.path.join("/", "Users", "pieter", "Data", "personal")
+        homedir = os.path.expanduser('~')
+        dir = os.path.join(homedir, "Data", "personal")
         path = os.path.join(dir, "FuelTask_%s_%s.json" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range)))
         return luigi.LocalTarget(path)
 
@@ -85,7 +100,47 @@ class FuelTask(luigi.Task):
             json.dump(data, f)
 
 
+class LoadFuelInGraph(luigi.Task):
+    spreadsheet_id = luigi.Parameter()
+    range = luigi.Parameter()
 
+    def requires(self):
+        return [DownloadFuelFromDrive(spreadsheet_id=self.spreadsheet_id, range=self.range)]
+
+    def output(self):
+        homedir = os.path.expanduser('~')
+        dir = os.path.join(homedir, "Data", "personal")
+        path = os.path.join(dir, "load_fuel_in_graph.log")
+        return luigi.LocalTarget(path)
+
+    def run(self):
+        with self.input()[0].open() as f:
+            data = json.load(f)
+
+        for record in data:
+            raw_dt_node = get_time_node(dateparser.parse(record['Timestamp']))
+            dt_node = StructuredNode.inflate(raw_dt_node)
+
+            action = BuyFuelAction.get_or_create({
+                    "price": record['Prijs'],
+                    "volume": record['Aantal liter']
+            })[0]
+            action.datetime.connect(dt_node)
+
+            metric = CarKilometers.get_or_create({})[0]
+            measurement = Measurement.get_or_create({
+                "value": record["Kilometerstand"]
+            })[0]
+            measurement.metric.connect(metric)
+            measurement.datetime.connect(dt_node)
+
+
+        with self.output().open('w') as f:
+            f.write('Done')
 
 if __name__ == "__main__":
+    try:
+        os.remove("/Users/pieter/Data/personal/load_fuel_in_graph.log")
+    except:
+        pass
     luigi.run()
