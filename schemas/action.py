@@ -14,9 +14,13 @@ class TradeAction(Action):
     price = FloatProperty(required=True)
 
 
-class BuyFuelAction(TradeAction):
+class BuyFuelAction(StructuredNode, TradeAction):
     volume = FloatProperty(required=True)
 
 
-class BankTransferAction(TradeAction):
+class BankTransferAction(StructuredNode, TradeAction):
     account = Relationship(BankAccount, 'ON_ACCOUNT')
+
+
+class AchieveAction(StructuredNode, Action):
+    pass

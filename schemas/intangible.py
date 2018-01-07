@@ -10,19 +10,15 @@ class Intangible(Thing):
     pass
 
 
-class Metric(Intangible):
-    unit = StringProperty()
+class Metric(StructuredNode, Intangible):
+    unit = StringProperty(required=True)
 
 
-class CarKilometers(Metric):
-    unit = StringProperty(default="km")
-
-
-class Measurement(Intangible):
+class Measurement(StructuredNode, Intangible):
     datetime = Relationship(StructuredNode, "AT")
     metric = Relationship(Metric, "MEASURED")
     value = FloatProperty(required=True)
 
 
-class BankAccount(Intangible):
+class BankAccount(StructuredNode, Intangible):
     pass

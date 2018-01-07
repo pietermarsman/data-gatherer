@@ -5,7 +5,6 @@ from datetime import datetime
 import luigi
 import pandas as pd
 from dateutil import parser
-from neomodel import StructuredNode
 
 from action import BankTransferAction
 from google_drive import DATA_DIR, get_time_node
@@ -62,8 +61,7 @@ class LoadBankMutation(luigi.Task):
             records = json.load(f)
 
         for record in records:
-            raw_dt_node = get_time_node(parser.parse(record['Transactiedatum']), 'Day')
-            dt_node = StructuredNode.inflate(raw_dt_node)
+            dt_node = get_time_node(parser.parse(record['Transactiedatum']))
 
             omschrijving = "%s (%s)" % (record['Omschrijving'], record["Transactiedatum"])
 
@@ -79,7 +77,7 @@ class LoadBankMutation(luigi.Task):
             f.write('Wrote %d records to graph' % len(records))
 
 
-class LoadAllBankMutations(luigi.Task):
+class LoadAllBankMutations(luigi.WrapperTask):
     dir = luigi.Parameter()
 
     def requires(self):
@@ -88,11 +86,6 @@ class LoadAllBankMutations(luigi.Task):
         files = [os.path.join(str(self.dir), f) for f in files]
         tasks = [LoadBankMutation(f) for f in files]
         return tasks
-
-    def output(self):
-        file_name = "%.4d%.2d.log" % (datetime.now().year, datetime.now().month)
-        dir = os.path.join(DATA_DIR, "LoadAllBankMutations", file_name)
-        return luigi.LocalTarget(dir)
 
 
 if __name__ == "__main__":

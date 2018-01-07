@@ -8,6 +8,7 @@ from datetime import datetime
 
 import httplib2
 import luigi
+import pytz
 from apiclient import discovery
 from dateutil import parser
 from neomodel import db, StructuredNode
@@ -15,13 +16,13 @@ from oauth2client import client, tools
 from oauth2client.file import Storage
 
 from action import BuyFuelAction
-from intangible import Measurement, CarKilometers
+from intangible import Measurement, Metric
 
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = '../reference/client_secret.json'
 APPLICATION_NAME = 'Google Sheets API Python Quickstart'
 
-DATA_DIR = os.path.join(os.path.expanduser('~'), "Data", "personal")
+DATA_DIR = os.path.join(os.path.expanduser('~'), 'Data', 'personal', 'output')
 
 
 def get_google_credentials():
@@ -67,12 +68,13 @@ def sanitize_str(s):
     return re.sub("\W", "_", s).lower()
 
 
-def get_time_node(dt, resolution="Minute"):
-    c = dt - datetime(1970, 1, 1)
+def get_time_node(dt, resolution="Day"):
+    c = dt - datetime(1970, 1, 1).astimezone(pytz.utc)
     t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
     query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
     results, meta = db.cypher_query(query)
-    return results[0][0]
+    node = StructuredNode.inflate(results[0][0])
+    return node
 
 
 class DownloadFuelFromDrive(luigi.Task):
@@ -113,6 +115,7 @@ class LoadFuelInGraph(luigi.Task):
         path = os.path.join(DATA_DIR, "load_fuel_in_graph.log")
         return luigi.LocalTarget(path)
 
+    # noinspection PyTypeChecker
     def run(self):
         with self.input()[0].open() as f:
             data = json.load(f)
@@ -121,17 +124,21 @@ class LoadFuelInGraph(luigi.Task):
             f.write('Read %d records' % len(data))
 
         for record in data:
-            raw_dt_node = get_time_node(parser.parse(record['Timestamp']))
-            dt_node = StructuredNode.inflate(raw_dt_node)
+            dt_node = get_time_node(parser.parse(record['Timestamp']))
 
             action = BuyFuelAction.get_or_create({
-                    "price": record['Prijs'],
-                    "volume": record['Aantal liter']
+                "name": "%.2f EUR (%s)" % (record['Prijs'], record['Timestamp']),
+                "price": record['Prijs'],
+                "volume": record['Aantal liter']
             })[0]
             action.datetime.connect(dt_node)
 
-            metric = CarKilometers.get_or_create({})[0]
+            metric = Metric.get_or_create({
+                "name": "Mileage Daihatsu Cuore",
+                "unit": "km"
+            })[0]
             measurement = Measurement.get_or_create({
+                "name": "%d" % record["Kilometerstand"],
                 "value": record["Kilometerstand"]
             })[0]
             measurement.metric.connect(metric)
