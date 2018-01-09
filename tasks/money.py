@@ -27,7 +27,7 @@ class ParseBankMutation(luigi.Task):
         return [BankMutation(self.original_file_path)]
 
     def output(self):
-        file_name = "%.4d%.2d.json" % (datetime.now().year, datetime.now().month)
+        file_name = "%s.json" % os.path.split(self.original_file_path)[-1].split('.')[0]
         dir = os.path.join(DATA_DIR, "ParseBankMutation", file_name)
         return luigi.LocalTarget(dir)
 
@@ -52,7 +52,7 @@ class LoadBankMutation(luigi.Task):
         return [ParseBankMutation(self.original_file_path)]
 
     def output(self):
-        file_name = "%.4d%.2d.log" % (datetime.now().year, datetime.now().month)
+        file_name = "%s.log" % os.path.split(self.original_file_path)[-1].split('.')[0]
         dir = os.path.join(DATA_DIR, "LoadBankMutation", file_name)
         return luigi.LocalTarget(dir)
 

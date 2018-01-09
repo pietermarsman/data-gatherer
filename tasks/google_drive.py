@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+from datetime import date
 from datetime import datetime
 
 import httplib2
@@ -69,6 +70,7 @@ def sanitize_str(s):
 
 
 def get_time_node(dt, resolution="Day"):
+    dt = dt.astimezone(pytz.utc)
     c = dt - datetime(1970, 1, 1).astimezone(pytz.utc)
     t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
     query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
@@ -80,12 +82,12 @@ def get_time_node(dt, resolution="Day"):
 class DownloadFuelFromDrive(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
+    date = luigi.DateParameter()
 
     def output(self):
-        month_name = "%.4d%.2d" % (datetime.now().year, datetime.now().month)
-        sheet_name = "%s_%s" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
-        file_name = "%s_%s.json" % (month_name, sheet_name)
-        dir = os.path.join(DATA_DIR, "DownloadFuelFromDrive", file_name)
+        dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
+        file_name = "%s_%s.json" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
+        dir = os.path.join(DATA_DIR, "DownloadFuelFromDrive", dir_date, file_name)
         return luigi.LocalTarget(dir)
 
     def run(self):
@@ -107,12 +109,13 @@ class DownloadFuelFromDrive(luigi.Task):
 class LoadFuelInGraph(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
+    date = luigi.DateParameter(default=date.today())
 
     def requires(self):
-        return [DownloadFuelFromDrive(spreadsheet_id=self.spreadsheet_id, range=self.range)]
+        return [DownloadFuelFromDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
 
     def output(self):
-        path = os.path.join(DATA_DIR, "load_fuel_in_graph.log")
+        path = os.path.join(DATA_DIR, "LoadFuelInGraph", "{date:%Y/%m/%d}".format(date=self.date), "log.log")
         return luigi.LocalTarget(path)
 
     # noinspection PyTypeChecker
