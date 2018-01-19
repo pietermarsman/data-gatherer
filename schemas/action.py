@@ -1,4 +1,4 @@
-from neomodel import FloatProperty
+from neomodel import FloatProperty, StringProperty
 from neomodel import Relationship
 from neomodel import StructuredNode
 
@@ -24,3 +24,13 @@ class BankTransferAction(StructuredNode, TradeAction):
 
 class AchieveAction(StructuredNode, Action):
     pass
+
+
+class Domain(StructuredNode, Thing):
+    pass
+
+
+class ViewAction(StructuredNode, Action):
+    url = StringProperty()
+    domain = Relationship(Domain, 'ON_DOMAIN')
+    next = Relationship('ViewAction', 'NEXT')
