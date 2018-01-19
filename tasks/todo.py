@@ -1,7 +1,7 @@
 import json
 import os
 import subprocess
-from datetime import datetime
+import datetime
 
 import dateparser
 import luigi
@@ -12,11 +12,11 @@ from google_drive import DATA_DIR, get_time_node
 
 
 class ExtractTodo(luigi.Task):
-    datetime = luigi.DateParameter()
+    date = luigi.DateParameter()
 
     def output(self):
-        file_name = "%s.json" % self.datetime
-        path = os.path.join(DATA_DIR, ExtractTodo.__name__, file_name)
+        file_path = "{date:%Y/%m/%d}.json".format(date=self.date)
+        path = os.path.join(DATA_DIR, ExtractTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -25,20 +25,28 @@ class ExtractTodo(luigi.Task):
 
 
 class TransformTodo(luigi.Task):
-    datetime = luigi.DateParameter()
+    date = luigi.DateParameter()
 
     def requires(self):
-        return [ExtractTodo(self.datetime)]
+        return [ExtractTodo(self.date)]
 
     def output(self):
-        file_name = "%s.json" % self.datetime
-        path = os.path.join(DATA_DIR, TransformTodo.__name__, file_name)
+        file_path = "{date:%Y/%m/%d}.json".format(date=self.date)
+        path = os.path.join(DATA_DIR, TransformTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
         with self.input()[0].open() as f:
             records = json.load(f)
 
+        todos = self.change_format(records)
+        todos = self.filter_on_date(todos)
+
+        with self.output().open('w') as f:
+            json.dump(todos, f, sort_keys=True, indent=4)
+
+    @staticmethod
+    def change_format(records):
         todos = []
         for record in records:
             if record['model'] == 'todo.todostate':
@@ -52,20 +60,22 @@ class TransformTodo(luigi.Task):
                         'text': record['fields']['text']
                     }
                     todos.append(todo)
+        return todos
 
-        with self.output().open('w') as f:
-            json.dump(todos, f, sort_keys=True, indent=4)
+    def filter_on_date(self, todos):
+        todos = [todo for todo in todos if todo['finished'].startswith(self.date.isoformat())]
+        return todos
 
 
 class LoadTodo(luigi.Task):
-    datetime = luigi.DateParameter()
+    date = luigi.DateParameter()
 
     def requires(self):
-        return [TransformTodo(self.datetime)]
+        return [TransformTodo(self.date)]
 
     def output(self):
-        file_name = "%s.log" % self.datetime
-        path = os.path.join(DATA_DIR, LoadTodo.__name__, file_name)
+        file_path = "{date:%Y/%m/%d}.log".format(date=self.date)
+        path = os.path.join(DATA_DIR, LoadTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -84,6 +94,12 @@ class LoadTodo(luigi.Task):
 
 
 class LoadTodoInGraph(luigi.WrapperTask):
+    start_date = luigi.DateParameter(default=datetime.datetime(2016, 4, 1))
+
+    def dates(self):
+        n_days = (datetime.datetime.now().date() - self.start_date).days
+        dates = [self.start_date + datetime.timedelta(days=x) for x in range(0, n_days)]
+        return dates
 
     def requires(self):
-        return [LoadTodo(datetime.now().date())]
+        return [LoadTodo(date) for date in self.dates()]
