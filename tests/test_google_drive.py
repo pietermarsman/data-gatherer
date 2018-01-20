@@ -1,10 +1,10 @@
+import datetime
 import unittest
 
-import datetime
-import oauth2client
 from googleapiclient.discovery import Resource
 
-from google_drive import sanitize_str, get_google_credential_path, get_service, get_google_credentials, get_time_node
+from google_drive import get_google_credential_path, get_service, get_google_credentials
+from misc import sanitize_str, get_time_node
 
 
 class MyTestCase(unittest.TestCase):

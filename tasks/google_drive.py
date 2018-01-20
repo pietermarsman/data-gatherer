@@ -1,29 +1,25 @@
 from __future__ import print_function
 
 import argparse
+import datetime
 import json
 import os
-import re
-from datetime import date
-from datetime import datetime
 
 import httplib2
 import luigi
-import pytz
 from apiclient import discovery
 from dateutil import parser
-from neomodel import db, StructuredNode
 from oauth2client import client, tools
 from oauth2client.file import Storage
 
-from action import BuyFuelAction
-from intangible import Measurement, Metric
+from config import settings
+from misc import sanitize_str, get_time_node
+from schemas.action import BuyFuelAction
+from schemas.intangible import Measurement, Metric
 
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = '../reference/client_secret.json'
 APPLICATION_NAME = 'Google Sheets API Python Quickstart'
-
-DATA_DIR = os.path.join(os.path.expanduser('~'), 'Data', 'personal', 'output')
 
 
 def get_google_credentials():
@@ -65,58 +61,68 @@ def get_service():
     return service
 
 
-def sanitize_str(s):
-    return re.sub("\W", "_", s).lower()
-
-
-def get_time_node(dt, resolution="Day"):
-    dt = dt.astimezone(pytz.utc)
-    c = dt - datetime(1970, 1, 1).astimezone(pytz.utc)
-    t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
-    query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
-    results, meta = db.cypher_query(query)
-    node = StructuredNode.inflate(results[0][0])
-    return node
-
-
-class DownloadFuelFromDrive(luigi.Task):
+class ExtractFuelDrive(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
-    date = luigi.DateParameter()
+    date = luigi.DateParameter(batch_method=max)
 
     def output(self):
-        dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
+        """Note: dowloaded new file every day, and not depending on date parameter since new file contains everything"""
+        dir_date = "{date:%Y/%m/%d/}".format(date=datetime.datetime.today())
         file_name = "%s_%s.json" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
-        dir = os.path.join(DATA_DIR, "DownloadFuelFromDrive", dir_date, file_name)
-        return luigi.LocalTarget(dir)
+        file_path = os.path.join(settings['io']['out'], ExtractFuelDrive.__name__, dir_date, file_name)
+        return luigi.LocalTarget(file_path)
 
     def run(self):
         sheets = get_service().spreadsheets().values()
         result = sheets.get(spreadsheetId=self.spreadsheet_id, range=self.range, majorDimension="ROWS").execute()
 
-        values = result.get('values', [])
-        data = [{k: v for k, v in zip(values[0], values_iter)} for values_iter in values[1:]]
-        for record in data:
-            record['Timestamp'] = datetime.strptime(record['Timestamp'], "%d/%m/%Y %H:%M:%S").isoformat()
+        with self.output().open('w') as f:
+            json.dump(result, f)
+
+
+class TransformFuelDrive(luigi.Task):
+    spreadsheet_id = luigi.Parameter()
+    range = luigi.Parameter()
+    date = luigi.DateParameter(batch_method=max)
+
+    def output(self):
+        dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
+        file_name = "%s_%s.json" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
+        file_path = os.path.join(settings['io']['out'], TransformFuelDrive.__name__, dir_date, file_name)
+        return luigi.LocalTarget(file_path)
+
+    def run(self):
+        with self.input()[0].open() as f:
+            data = json.load(f)
+
+        values = data.get('values', [])
+        records = [{k: v for k, v in zip(values[0], values_iter)} for values_iter in values[1:]]
+        for record in records:
+            record['Timestamp'] = datetime.datetime.strptime(record['Timestamp'], "%d/%m/%Y %H:%M:%S").isoformat()
             record['Aantal liter'] = float(record['Aantal liter'])
             record['Prijs'] = float(record['Prijs'])
             record['Kilometerstand'] = float(record['Kilometerstand'])
 
+        records = [record for record in records if record['Timestamp'].startswith(self.date.isoformat())]
+
         with self.output().open('w') as f:
-            json.dump(data, f)
+            json.dump(records, f)
 
 
-class LoadFuelInGraph(luigi.Task):
+class LoadFuelDrive(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
-    date = luigi.DateParameter(default=date.today())
+    date = luigi.DateParameter(default=datetime.date.today())
 
     def requires(self):
-        return [DownloadFuelFromDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
+        return [ExtractFuelDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
 
     def output(self):
-        path = os.path.join(DATA_DIR, "LoadFuelInGraph", "{date:%Y/%m/%d}".format(date=self.date), "log.log")
-        return luigi.LocalTarget(path)
+        dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
+        file_name = "%s_%s.log" % (sanitize_str(self.spreadsheet_id), sanitize_str(self.range))
+        file_path = os.path.join(settings['io']['out'], LoadFuelDrive.__name__, dir_date, file_name)
+        return luigi.LocalTarget(file_path)
 
     # noinspection PyTypeChecker
     def run(self):
@@ -148,10 +154,17 @@ class LoadFuelInGraph(luigi.Task):
             measurement.datetime.connect(dt_node)
 
 
+class LoadAllFuelDrive(luigi.WrapperTask):
+    spreadsheet_id = luigi.Parameter()
+    range = luigi.Parameter()
+    start_date = luigi.DateParameter(default=datetime.datetime(2017, 10, 1))
+    end_date = luigi.DateParameter(default=datetime.datetime.today())
 
-if __name__ == "__main__":
-    try:
-        os.remove("/Users/pieter/Data/personal/load_fuel_in_graph.log")
-    except:
-        pass
-    luigi.run()
+    def dates(self):
+        n_days = (self.end_date - self.start_date).days
+        dates = [self.end_date - datetime.timedelta(days=x + 1) for x in range(n_days)]
+        return dates
+
+    def requires(self):
+        return [LoadFuelDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=date) for date in
+                self.dates()]

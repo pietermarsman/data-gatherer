@@ -1,22 +1,24 @@
+import datetime
 import json
 import os
 import subprocess
-import datetime
 
 import dateparser
 import luigi
 from dateutil import parser
 
-from action import AchieveAction
-from google_drive import DATA_DIR, get_time_node
+from config import settings
+from misc import get_time_node
+from schemas.action import AchieveAction
 
 
 class ExtractTodo(luigi.Task):
-    date = luigi.DateParameter()
+    date = luigi.DateParameter(batch_method=max)
 
     def output(self):
-        file_path = "{date:%Y/%m/%d}.json".format(date=self.date)
-        path = os.path.join(DATA_DIR, ExtractTodo.__name__, file_path)
+        """Note: dowloaded new file every day, and not depending on date parameter since new file contains everything"""
+        file_path = "{date:%Y/%m/%d}.json".format(date=datetime.datetime.today())
+        path = os.path.join(settings['io']['out'], ExtractTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -32,7 +34,7 @@ class TransformTodo(luigi.Task):
 
     def output(self):
         file_path = "{date:%Y/%m/%d}.json".format(date=self.date)
-        path = os.path.join(DATA_DIR, TransformTodo.__name__, file_path)
+        path = os.path.join(settings['io']['out'], TransformTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -75,7 +77,7 @@ class LoadTodo(luigi.Task):
 
     def output(self):
         file_path = "{date:%Y/%m/%d}.log".format(date=self.date)
-        path = os.path.join(DATA_DIR, LoadTodo.__name__, file_path)
+        path = os.path.join(settings['io']['out'], LoadTodo.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -93,12 +95,13 @@ class LoadTodo(luigi.Task):
             f.write('Loaded %d records' % len(records))
 
 
-class LoadTodoInGraph(luigi.WrapperTask):
+class LoadAllTodo(luigi.WrapperTask):
     start_date = luigi.DateParameter(default=datetime.datetime(2016, 4, 1))
+    end_date = luigi.DateParameter(default=datetime.datetime.today())
 
     def dates(self):
-        n_days = (datetime.datetime.now().date() - self.start_date).days
-        dates = [self.start_date + datetime.timedelta(days=x) for x in range(0, n_days)]
+        n_days = (self.end_date - self.start_date).days
+        dates = [self.end_date - datetime.timedelta(days=x + 1) for x in range(n_days)]
         return dates
 
     def requires(self):

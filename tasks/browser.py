@@ -8,8 +8,9 @@ import luigi
 import pytz
 from dateutil import parser
 
-from action import ViewAction, Domain
-from google_drive import DATA_DIR, get_time_node
+from config import settings
+from misc import get_time_node
+from schemas.action import ViewAction, Domain
 
 
 def dict_factory(cursor, row):
@@ -20,16 +21,18 @@ def dict_factory(cursor, row):
 
 
 class ExtractBrowserHistory(luigi.Task):
+    date = luigi.DateParameter(batch_method=max)
     db_location = luigi.Parameter(default='/Users/pieter/Library/Safari/History.db')
 
     def output(self):
+        """Note: dowloaded new file every day, and not depending on date parameter since new file contains everything"""
         file_path = "{date:%Y/%m/%d}.sqlite".format(date=datetime.datetime.today())
-        path = os.path.join(DATA_DIR, ExtractBrowserHistory.__name__, file_path)
+        path = os.path.join(settings['io']['out'], ExtractBrowserHistory.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
         self.output().makedirs()
-        subprocess.run(['cp', self.db_location, self.output().path])
+        ret = subprocess.run(['cp', self.db_location, self.output().path])
 
 
 class TransformBrowserHistory(luigi.Task):
@@ -50,11 +53,11 @@ class TransformBrowserHistory(luigi.Task):
     date = luigi.DateParameter()
 
     def requires(self):
-        return [ExtractBrowserHistory()]
+        return [ExtractBrowserHistory(self.date)]
 
     def output(self):
         file_path = "{date:%Y/%m/%d}.json".format(date=self.date)
-        path = os.path.join(DATA_DIR, TransformBrowserHistory.__name__, file_path)
+        path = os.path.join(settings['io']['out'], TransformBrowserHistory.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -83,7 +86,7 @@ class LoadBrowserHistory(luigi.Task):
 
     def output(self):
         file_path = "{date:%Y/%m/%d}.log".format(date=self.date)
-        path = os.path.join(DATA_DIR, LoadBrowserHistory.__name__, file_path)
+        path = os.path.join(settings['io']['out'], LoadBrowserHistory.__name__, file_path)
         return luigi.LocalTarget(path)
 
     def run(self):
@@ -116,13 +119,13 @@ class LoadBrowserHistory(luigi.Task):
             f.write('Writen %d records' % len(data))
 
 
-class LoadBrowserHistoryInGraph(luigi.Task):
+class LoadAllBrowserHistory(luigi.WrapperTask):
     start_date = luigi.DateParameter(default=datetime.datetime(2017, 3, 1))
     end_date = luigi.DateParameter(default=datetime.datetime.today())
 
     def dates(self):
         n_days = (self.end_date - self.start_date).days
-        dates = [self.start_date + datetime.timedelta(days=x) for x in range(n_days)]
+        dates = [self.end_date - datetime.timedelta(days=x + 1) for x in range(n_days)]
         return dates
 
     def requires(self):

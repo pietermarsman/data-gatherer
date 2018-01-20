@@ -6,29 +6,30 @@ import luigi
 import pandas as pd
 from dateutil import parser
 
-from action import BankTransferAction
-from google_drive import DATA_DIR, get_time_node
-from intangible import BankAccount
+from config import settings
+from misc import get_time_node
+from schemas.action import BankTransferAction
+from schemas.intangible import BankAccount
 
 
-class BankMutation(luigi.ExternalTask):
+class ExtractBankMutation(luigi.ExternalTask):
     original_file_path = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.original_file_path)
 
 
-class ParseBankMutation(luigi.Task):
+class TransformBankMutation(luigi.Task):
     COL = ['Rekeningnummer', 'Muntsoort', 'Transactiedatum', 'Beginsaldo', 'Eindsaldo', 'Rentedatum',
            'Transactiebedrag', 'Omschrijving']
     original_file_path = luigi.Parameter()
 
     def requires(self):
-        return [BankMutation(self.original_file_path)]
+        return [ExtractBankMutation(self.original_file_path)]
 
     def output(self):
         file_name = "%s.json" % os.path.split(self.original_file_path)[-1].split('.')[0]
-        dir = os.path.join(DATA_DIR, "ParseBankMutation", file_name)
+        dir = os.path.join(settings['io']['out'], TransformBankMutation.__name__, file_name)
         return luigi.LocalTarget(dir)
 
     def run(self):
@@ -49,11 +50,11 @@ class LoadBankMutation(luigi.Task):
     original_file_path = luigi.Parameter()
 
     def requires(self):
-        return [ParseBankMutation(self.original_file_path)]
+        return [TransformBankMutation(self.original_file_path)]
 
     def output(self):
         file_name = "%s.log" % os.path.split(self.original_file_path)[-1].split('.')[0]
-        dir = os.path.join(DATA_DIR, "LoadBankMutation", file_name)
+        dir = os.path.join(settings['io']['out'], LoadBankMutation.__name__, file_name)
         return luigi.LocalTarget(dir)
 
     def run(self):
@@ -86,7 +87,3 @@ class LoadAllBankMutations(luigi.WrapperTask):
         files = [os.path.join(str(self.dir), f) for f in files]
         tasks = [LoadBankMutation(f) for f in files]
         return tasks
-
-
-if __name__ == "__main__":
-    luigi.run()
