@@ -111,7 +111,10 @@ class LoadBrowserHistory(luigi.Task):
                 node.domain.connect(domain)
 
             if 'redirect_source' in record:
-                previous_node = previous_nodes[record['redirect_source']]
+                if record['redirect_source'] in previous_nodes:
+                    previous_node = previous_nodes[record['redirect_source']]
+                else:
+                    previous_node = ViewAction.nodes.get(name=record['redirect_source'])
                 previous_node.next.connect(node)
 
 
