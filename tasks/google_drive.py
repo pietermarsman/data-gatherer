@@ -84,7 +84,10 @@ class ExtractFuelDrive(luigi.Task):
 class TransformFuelDrive(luigi.Task):
     spreadsheet_id = luigi.Parameter()
     range = luigi.Parameter()
-    date = luigi.DateParameter(batch_method=max)
+    date = luigi.DateParameter()
+
+    def requires(self):
+        return [ExtractFuelDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
 
     def output(self):
         dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
@@ -116,7 +119,7 @@ class LoadFuelDrive(luigi.Task):
     date = luigi.DateParameter(default=datetime.date.today())
 
     def requires(self):
-        return [ExtractFuelDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
+        return [TransformFuelDrive(spreadsheet_id=self.spreadsheet_id, range=self.range, date=self.date)]
 
     def output(self):
         dir_date = "{date:%Y/%m/%d/}".format(date=self.date)
@@ -128,9 +131,6 @@ class LoadFuelDrive(luigi.Task):
     def run(self):
         with self.input()[0].open() as f:
             data = json.load(f)
-
-        with self.output().open('w') as f:
-            f.write('Read %d records' % len(data))
 
         for record in data:
             dt_node = get_time_node(parser.parse(record['Timestamp']))
@@ -152,6 +152,9 @@ class LoadFuelDrive(luigi.Task):
             })[0]
             measurement.metric.connect(metric)
             measurement.datetime.connect(dt_node)
+
+        with self.output().open('w') as f:
+            f.write('Read %d records' % len(data))
 
 
 class LoadAllFuelDrive(luigi.WrapperTask):
