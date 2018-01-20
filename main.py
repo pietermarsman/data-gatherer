@@ -2,7 +2,7 @@ import luigi
 
 from config import settings
 from tasks.browser import LoadAllBrowserHistory
-from tasks.google_drive import LoadAllFuelDrive
+from tasks.fuel import LoadAllFuelDrive
 from tasks.money import LoadAllBankMutations
 from tasks.todo import LoadAllTodo
 

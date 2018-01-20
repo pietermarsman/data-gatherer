@@ -3,8 +3,7 @@ import unittest
 
 from googleapiclient.discovery import Resource
 
-from google_drive import get_google_credential_path, get_service, get_google_credentials
-from misc import sanitize_str, get_time_node
+from misc import sanitize_str, get_time_node, get_google_credentials, get_google_credential_path, get_service
 
 
 class MyTestCase(unittest.TestCase):
