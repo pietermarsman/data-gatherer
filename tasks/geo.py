@@ -4,9 +4,11 @@ import os
 from hashlib import md5
 
 import luigi
+from dateutil import parser
 
 from config import settings
-from misc import sanitize_str, GoogleDrive
+from intangible import GeoCoordinate
+from misc import sanitize_str, GoogleDrive, get_time_node
 
 
 class GeoDrive(luigi.Task):
@@ -59,6 +61,8 @@ class TransformGeo(GeoDrive):
             }
             records.append(record)
 
+        records = [record for record in records if record['accuracy'] < 40]
+
         with self.output().open('w') as f:
             json.dump(records, f)
 
@@ -68,7 +72,20 @@ class LoadGeo(GeoDrive):
         return [TransformGeo(query=self.query, mime_type=self.mime_type, folder=self.folder, date=self.date)]
 
     def run(self):
-        pass
+        with self.input()[0].open() as f:
+            records = json.load(f)
+
+        for record in records:
+            dt_node = get_time_node(parser.parse(record['datetime']), "Minute")
+            measurement = GeoCoordinate.get_or_create({
+                "name": "%.4f, %.4f" % (record['lat'], record['lon']),
+                "latitude": record["lat"],
+                "longitude": record["lon"]
+            })[0]
+            measurement.datetime.connect(dt_node)
+
+        with self.output().open('w') as f:
+            f.write('Loaded %d records' % len(records))
 
 
 class LoadAllGeo(luigi.WrapperTask):

@@ -22,3 +22,9 @@ class Measurement(StructuredNode, Intangible):
 
 class BankAccount(StructuredNode, Intangible):
     pass
+
+
+class GeoCoordinate(StructuredNode, Intangible):
+    datetime = Relationship(StructuredNode, "AT")
+    latitude = FloatProperty(required=True)
+    longitude = FloatProperty(required=True)
