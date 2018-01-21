@@ -1,15 +1,11 @@
-import argparse
 import os
 import re
-import io
 from datetime import datetime
 
 import httplib2
 import pytz
 from googleapiclient import discovery
-from googleapiclient.http import MediaIoBaseDownload
 from neomodel import db, StructuredNode
-from oauth2client import client, tools
 from oauth2client.client import OAuth2WebServerFlow
 from oauth2client.file import Storage
 
@@ -56,8 +52,8 @@ class GoogleDrive(object):
         return files
 
     def get_file(self, file_id, decode=None):
-        content = self.get_drive_service().\
-            files().get_media(fileId=file_id).\
+        content = self.get_drive_service(). \
+            files().get_media(fileId=file_id). \
             execute()
         if decode is not None:
             content = content.decode(decode)
@@ -67,7 +63,8 @@ class GoogleDrive(object):
         if self.service is None:
             credentials = self._get_google_credentials2()
             http = credentials.authorize(httplib2.Http())
-            self.service = discovery.build(self.service_name, self.version, http=http, discoveryServiceUrl=self.discovery_url)
+            self.service = discovery.build(self.service_name, self.version, http=http,
+                                           discoveryServiceUrl=self.discovery_url)
         return self.service
 
     def get_drive_service(self):
@@ -83,7 +80,8 @@ class GoogleDrive(object):
 
         if credentials is None:
             # Run through the OAuth flow and retrieve credentials
-            flow = OAuth2WebServerFlow(settings['google_drive']['client_id'], settings['google_drive']['client_secret'], self.scopes, self.redirect_url)
+            flow = OAuth2WebServerFlow(settings['google_drive']['client_id'], settings['google_drive']['client_secret'],
+                                       self.scopes, self.redirect_url)
             authorize_url = flow.step1_get_authorize_url()
             print('Go to the following link in your browser: ' + authorize_url)
             code = input('Enter verification code: ').strip()

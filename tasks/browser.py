@@ -117,7 +117,6 @@ class LoadBrowserHistory(luigi.Task):
                     previous_node = ViewAction.nodes.get(name=record['redirect_source'])
                 previous_node.next.connect(node)
 
-
         with self.output().open('w') as f:
             f.write('Writen %d records' % len(data))
 

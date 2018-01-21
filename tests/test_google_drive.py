@@ -19,7 +19,7 @@ class MyTestCase(unittest.TestCase):
     def test_drive_service(self):
         service = get_service()
         self.assertEqual(type(service), Resource)
-        
+
     def test_credentials(self):
         credentials = get_google_credentials()
         credentials.get_access_token()

@@ -1,6 +1,7 @@
 import luigi
 
 from config import settings
+from geo import LoadAllGeo
 from tasks.browser import LoadAllBrowserHistory
 from tasks.fuel import LoadAllFuelDrive
 from tasks.money import LoadAllBankMutations
@@ -15,6 +16,9 @@ class MainTask(luigi.WrapperTask):
         yield LoadAllBankMutations(settings['io']['in'])
         yield LoadAllTodo()
         yield LoadAllBrowserHistory()
+        yield LoadAllGeo(
+            query='\'{folder}\' in parents and mimeType=\'{mime_type}\' and name=\'{date:%Y%m%d}.geojson\'',
+            mime_type='application/vnd.geo+json', folder='1H3nSpN6GePfo8CM0UaIT2do1MDySZqZl')
 
 
 if __name__ == "__main__":
