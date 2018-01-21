@@ -30,7 +30,7 @@ class ExtractGeoDrive(GeoDrive):
         result = gd.list_files(query)
         file_names = result['files']
 
-        values = []
+        values = {}
         if len(file_names) > 0:
             file_id = file_names[0]['id']
             values = gd.get_file(file_id, 'utf-8')
@@ -45,7 +45,22 @@ class TransformGeo(GeoDrive):
         return [ExtractGeoDrive(query=self.query, mime_type=self.mime_type, folder=self.folder, date=self.date)]
 
     def run(self):
-        pass
+        with self.input()[0].open() as f:
+            data = json.load(f)
+
+        records = []
+        for feature in data.get('features', []):
+            record = {
+                "lat": feature["geometry"]["coordinates"][0],
+                "lon": feature["geometry"]["coordinates"][1],
+                "accuracy": float(feature["properties"]["accuracy"]),
+                "datetime": datetime.datetime.strptime(feature['properties']['time'],
+                                                       '%Y-%m-%dT%H:%M:%S.%fZ').isoformat()
+            }
+            records.append(record)
+
+        with self.output().open('w') as f:
+            json.dump(records, f)
 
 
 class LoadGeo(GeoDrive):
