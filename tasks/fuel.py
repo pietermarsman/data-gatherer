@@ -8,7 +8,7 @@ import luigi
 from dateutil import parser
 
 from config import settings
-from misc import sanitize_str, get_time_node, GoogleDriveSpreadSheet
+from misc import sanitize_str, get_time_node, GoogleDrive
 from schemas.action import BuyFuelAction
 from schemas.intangible import Measurement, Metric
 
@@ -26,8 +26,8 @@ class ExtractFuelDrive(luigi.Task):
         return luigi.LocalTarget(file_path)
 
     def run(self):
-        gd = GoogleDriveSpreadSheet(self.spreadsheet_id, self.range)
-        values = gd.get_values()
+        gd = GoogleDrive()
+        values = gd.get_spreadsheet_values(self.spreadsheet_id, self.range)
 
         with self.output().open('w') as f:
             json.dump(values, f)

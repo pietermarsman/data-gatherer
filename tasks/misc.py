@@ -1,14 +1,19 @@
 import argparse
 import os
 import re
+import io
 from datetime import datetime
 
 import httplib2
 import pytz
 from googleapiclient import discovery
+from googleapiclient.http import MediaIoBaseDownload
 from neomodel import db, StructuredNode
 from oauth2client import client, tools
+from oauth2client.client import OAuth2WebServerFlow
 from oauth2client.file import Storage
+
+from config import settings
 
 
 def sanitize_str(s):
@@ -25,52 +30,66 @@ def get_time_node(dt, resolution="Day"):
     return node
 
 
-class GoogleDriveSpreadSheet(object):
-    def __init__(self, spreadsheet_id, range):
-        self.scopes = 'https://www.googleapis.com/auth/spreadsheets.readonly'
-        self.client_secret_file = '../reference/client_secret.json'
+class GoogleDrive(object):
+    def __init__(self):
+        self.scopes = 'https://www.googleapis.com/auth/drive'
+        self.redirect_url = 'urn:ietf:wg:oauth:2.0:oob'
         self.application_name = 'Google Sheets API Python Quickstart'
         self.discovery_url = 'https://sheets.googleapis.com/$discovery/rest?version=v4'
         self.major_dimension = "ROWS"
         self.service_name = 'sheets'
         self.version = 'v4'
 
-        self.spreadsheet_id = spreadsheet_id
-        self.range = range
+        self.drive_service = None
+        self.service = None
 
-    def get_values(self):
+    def get_spreadsheet_values(self, spreadsheet_id, range):
         values = self.get_service(). \
             spreadsheets(). \
             values(). \
-            get(spreadsheetId=self.spreadsheet_id, range=self.range, majorDimension=self.major_dimension). \
+            get(spreadsheetId=spreadsheet_id, range=range, majorDimension=self.major_dimension). \
             execute()
         return values
 
+    def list_files(self, query):
+        files = self.get_drive_service().files().list(q=query).execute()
+        return files
+
+    def get_file(self, file_id, decode=None):
+        content = self.get_drive_service().\
+            files().get_media(fileId=file_id).\
+            execute()
+        if decode is not None:
+            content = content.decode(decode)
+        return content
+
     def get_service(self):
-        credentials = self._get_google_credentials()
-        http = credentials.authorize(httplib2.Http())
-        service = discovery.build(self.service_name, self.version, http=http, discoveryServiceUrl=self.discovery_url)
-        return service
+        if self.service is None:
+            credentials = self._get_google_credentials2()
+            http = credentials.authorize(httplib2.Http())
+            self.service = discovery.build(self.service_name, self.version, http=http, discoveryServiceUrl=self.discovery_url)
+        return self.service
 
-    def _get_google_credentials(self):
-        """Gets valid user credentials from storage.
+    def get_drive_service(self):
+        if self.drive_service is None:
+            credentials = self._get_google_credentials2()
+            http = credentials.authorize(httplib2.Http())
+            self.drive_service = discovery.build('drive', 'v3', http=http)
+        return self.drive_service
 
-        If nothing has been stored, or if the stored credentials are invalid,
-        the OAuth2 flow is completed to obtain the new credentials.
+    def _get_google_credentials2(self):
+        storage = Storage(self._get_google_credential_path())
+        credentials = storage.get()
 
-        Returns:
-            Credentials, the obtained credential.
-        """
-        credential_path = self._get_google_credential_path()
+        if credentials is None:
+            # Run through the OAuth flow and retrieve credentials
+            flow = OAuth2WebServerFlow(settings['google_drive']['client_id'], settings['google_drive']['client_secret'], self.scopes, self.redirect_url)
+            authorize_url = flow.step1_get_authorize_url()
+            print('Go to the following link in your browser: ' + authorize_url)
+            code = input('Enter verification code: ').strip()
+            credentials = flow.step2_exchange(code)
+            storage.put(credentials)
 
-        store = Storage(credential_path)
-        credentials = store.get()
-        if not credentials or credentials.invalid:
-            flow = client.flow_from_clientsecrets(self.client_secret_file, self.scopes)
-            flow.user_agent = self.application_name
-            flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-            credentials = tools.run_flow(flow, store, flags)
-            print('Storing credentials to ' + credential_path)
         return credentials
 
     def _get_google_credential_path(self):

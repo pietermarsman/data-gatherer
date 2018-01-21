@@ -1,0 +1,6 @@
+io:
+  in: "<absolute_path>"
+  out: "<absolute_path>"
+google_drive:
+  client_id: "<client_id>"
+  client_secret: "<client_secret>"
