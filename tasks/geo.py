@@ -31,15 +31,14 @@ class ExtractGeoDrive(GeoDrive):
         query = self.query.format(folder=self.folder, mime_type=self.mime_type, date=self.date)
         result = gd.list_files(query)
         file_names = result['files']
-
-        values = {}
+        
         if len(file_names) > 0:
             file_id = file_names[0]['id']
             values = gd.get_file(file_id, 'utf-8')
             values = json.loads(values)
 
-        with self.output().open('w') as f:
-            json.dump(values, f)
+            with self.output().open('w') as f:
+                json.dump(values, f)
 
 
 class TransformGeo(GeoDrive):
