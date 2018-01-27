@@ -5,10 +5,57 @@ from hashlib import md5
 
 import luigi
 from dateutil import parser
+from geopy import Nominatim
 
 from config import settings
-from intangible import GeoCoordinate
+from intangible import GeoCoordinate, Country, State, Town, Road, HouseNumber
 from misc import sanitize_str, GoogleDrive, get_time_node
+
+
+def get_geo_node(lat, lon):
+    geolocator = Nominatim()
+    geo_name = "%.6f, %.6f" % (lat, lon)
+    location = geolocator.reverse(geo_name).raw
+    address = location.get('address')
+    print(json.dumps(address, sort_keys=True))
+
+    geo = GeoCoordinate.get_or_create({"name": geo_name, "lat": lat, "lon": lon})[0]
+    if address is not None and 'house_number' in address:
+        country = Country.get_or_create({'name': address['country']})[0]
+
+        states = country.states.filter(name=address['state']).all()
+        if len(states) > 0:
+            state = states[0]
+        else:
+            state = State(name=address['state']).save()
+            country.states.connect(state)
+
+        town_name = address.get('town', address.get('city'))
+        towns = state.towns.filter(name=town_name).all()
+        if len(towns) > 0:
+            town = towns[0]
+        else:
+            town = Town(name=town_name).save()
+            state.towns.connect(town)
+
+        road_name = address.get('road', address.get('footway', address.get('pedestrian', address.get('cycleway'))))
+        roads = town.roads.filter(name=road_name).all()
+        if len(roads) > 0:
+            road = roads[0]
+        else:
+            road = Road(name=road_name).save()
+            town.roads.connect(road)
+
+        house_numbers = road.house_numbers.filter(name=address['house_number']).all()
+        if len(house_numbers) > 0:
+            house_number = house_numbers[0]
+        else:
+            house_number = HouseNumber(name=address['house_number']).save()
+            road.house_numbers.connect(house_number)
+
+        house_number.geos.connect(geo)
+
+    return geo
 
 
 class GeoDrive(luigi.Task):
@@ -31,14 +78,16 @@ class ExtractGeoDrive(GeoDrive):
         query = self.query.format(folder=self.folder, mime_type=self.mime_type, date=self.date)
         result = gd.list_files(query)
         file_names = result['files']
-        
+
         if len(file_names) > 0:
             file_id = file_names[0]['id']
             values = gd.get_file(file_id, 'utf-8')
             values = json.loads(values)
+        else:
+            values = {}
 
-            with self.output().open('w') as f:
-                json.dump(values, f)
+        with self.output().open('w') as f:
+            json.dump(values, f)
 
 
 class TransformGeo(GeoDrive):
@@ -52,8 +101,8 @@ class TransformGeo(GeoDrive):
         records = []
         for feature in data.get('features', []):
             record = {
-                "lat": feature["geometry"]["coordinates"][0],
-                "lon": feature["geometry"]["coordinates"][1],
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
                 "accuracy": float(feature["properties"]["accuracy"]),
                 "datetime": datetime.datetime.strptime(feature['properties']['time'],
                                                        '%Y-%m-%dT%H:%M:%S.%fZ').isoformat()
@@ -76,12 +125,8 @@ class LoadGeo(GeoDrive):
 
         for record in records:
             dt_node = get_time_node(parser.parse(record['datetime']), "Minute")
-            measurement = GeoCoordinate.get_or_create({
-                "name": "%.4f, %.4f" % (record['lat'], record['lon']),
-                "latitude": record["lat"],
-                "longitude": record["lon"]
-            })[0]
-            measurement.datetime.connect(dt_node)
+            geo_node = get_geo_node(record['lat'], record['lon'])
+            geo_node.datetime.connect(dt_node)
 
         with self.output().open('w') as f:
             f.write('Loaded %d records' % len(records))

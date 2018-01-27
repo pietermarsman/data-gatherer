@@ -24,7 +24,36 @@ class BankAccount(StructuredNode, Intangible):
     pass
 
 
-class GeoCoordinate(StructuredNode, Intangible):
+class Geo(Intangible):
+    pass
+
+
+class GeoCoordinate(StructuredNode, Geo):
     datetime = Relationship(StructuredNode, "AT")
-    latitude = FloatProperty(required=True)
-    longitude = FloatProperty(required=True)
+    lat = FloatProperty(required=True)
+    lon = FloatProperty(required=True)
+
+
+class HouseNumber(StructuredNode, Geo):
+    geos = Relationship(GeoCoordinate, "IN")
+
+
+class Zipcode(StructuredNode, Geo):
+    house_numbers = Relationship(HouseNumber, "IN")
+
+
+class Road(StructuredNode, Geo):
+    geos = Relationship(GeoCoordinate, "IN")
+    house_numbers = Relationship(HouseNumber, "IN")
+
+
+class Town(StructuredNode, Geo):
+    roads = Relationship(Road, "IN")
+
+
+class State(StructuredNode, Geo):
+    towns = Relationship(Town, "IN")
+
+
+class Country(StructuredNode, Geo):
+    states = Relationship(State, "IN")
