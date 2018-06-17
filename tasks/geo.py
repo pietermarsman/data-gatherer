@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 from hashlib import md5
 
 import luigi
@@ -9,15 +10,14 @@ from geopy import Nominatim
 
 from config import settings
 from intangible import GeoCoordinate, Country, State, Town, Road, HouseNumber
-from misc import sanitize_str, GoogleDrive, get_time_node
+from misc import sanitize_str, GoogleDrive, get_time_node, dict_get_first
 
 
 def get_geo_node(lat, lon):
-    geolocator = Nominatim()
+    geolocator = Nominatim(user_agent="pieters-data-gatherer", timeout=2)
     geo_name = "%.6f, %.6f" % (lat, lon)
     location = geolocator.reverse(geo_name).raw
     address = location.get('address')
-    print(json.dumps(address, sort_keys=True))
 
     geo = GeoCoordinate.get_or_create({"name": geo_name, "lat": lat, "lon": lon})[0]
     if address is not None and 'house_number' in address:
@@ -30,7 +30,7 @@ def get_geo_node(lat, lon):
             state = State(name=address['state']).save()
             country.states.connect(state)
 
-        town_name = address.get('town', address.get('city'))
+        town_name = dict_get_first(address, ['town', 'city', 'village'])
         towns = state.towns.filter(name=town_name).all()
         if len(towns) > 0:
             town = towns[0]
@@ -38,13 +38,16 @@ def get_geo_node(lat, lon):
             town = Town(name=town_name).save()
             state.towns.connect(town)
 
-        road_name = address.get('road', address.get('footway', address.get('pedestrian', address.get('cycleway'))))
+        road_name = dict_get_first(address, ['road', 'footway', 'pedestrian', 'cycleway', 'path'])
         roads = town.roads.filter(name=road_name).all()
         if len(roads) > 0:
             road = roads[0]
         else:
-            road = Road(name=road_name).save()
-            town.roads.connect(road)
+            try:
+                road = Road(name=road_name).save()
+                town.roads.connect(road)
+            except:
+                print(road_name)
 
         house_numbers = road.house_numbers.filter(name=address['house_number']).all()
         if len(house_numbers) > 0:

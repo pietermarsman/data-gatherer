@@ -10,6 +10,14 @@ from oauth2client.client import OAuth2WebServerFlow
 from oauth2client.file import Storage
 
 from config import settings
+from timetree import get_time_class
+
+
+def dict_get_first(d, keys):
+    for key in keys:
+        if key in d:
+            return d[key]
+    raise KeyError('None of %s in %s' % (keys, d))
 
 
 def sanitize_str(s):
@@ -21,8 +29,8 @@ def get_time_node(dt, resolution="Day"):
     c = dt - datetime(1970, 1, 1).astimezone(pytz.utc)
     t = int((c.days * 24 * 60 * 60 + c.seconds) * 1000 + c.microseconds / 1000.0)
     query = "CALL ga.timetree.single({time: %s, create: true, resolution: \"%s\"})" % (t, resolution)
-    results, meta = db.cypher_query(query)
-    node = StructuredNode.inflate(results[0][0])
+    results, _ = db.cypher_query(query)
+    node = get_time_class(resolution).inflate(results[0][0])
     return node
 
 
@@ -90,7 +98,8 @@ class GoogleDrive(object):
 
         return credentials
 
-    def _get_google_credential_path(self):
+    @staticmethod
+    def _get_google_credential_path():
         home_dir = os.path.expanduser('~')
         credential_dir = os.path.join(home_dir, '.credentials')
         if not os.path.exists(credential_dir):

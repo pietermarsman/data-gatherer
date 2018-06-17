@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime
+from glob import glob
 
 import luigi
 import pandas as pd
@@ -82,8 +83,6 @@ class LoadAllBankMutations(luigi.WrapperTask):
     dir = luigi.Parameter()
 
     def requires(self):
-        files = os.listdir(str(self.dir))
-        files = [f for f in files if f.endswith('.txt')]
-        files = [os.path.join(str(self.dir), f) for f in files]
+        files = glob(os.path.join(self.dir, '*.txt'))
         tasks = [LoadBankMutation(f) for f in files]
         return tasks
