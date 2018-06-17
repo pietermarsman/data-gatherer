@@ -17,6 +17,7 @@ class Metric(StructuredNode, Intangible):
 class Measurement(StructuredNode, Intangible):
     datetime = Relationship(StructuredNode, "AT")
     metric = Relationship(Metric, "MEASURED")
+    next = Relationship('Measurement', "NEXT")
     value = FloatProperty(required=True)
 
 

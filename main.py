@@ -8,6 +8,7 @@ from tasks.browser import LoadAllBrowserHistory
 from tasks.fuel import LoadAllFuelDrive
 from tasks.money import LoadAllBankMutations
 from tasks.todo import LoadAllTodo
+from tomtom import LoadAllTomTomData
 
 
 class MainTask(luigi.WrapperTask):
@@ -21,6 +22,7 @@ class MainTask(luigi.WrapperTask):
         yield LoadAllGeo(
             query='\'{folder}\' in parents and mimeType=\'{mime_type}\' and name=\'{date:%Y%m%d}.geojson\'',
             mime_type='application/vnd.geo+json', folder='1H3nSpN6GePfo8CM0UaIT2do1MDySZqZl')
+        yield LoadAllTomTomData(directory=os.path.join(settings['io']['in'], 'tomtom'))
 
 
 if __name__ == "__main__":
