@@ -1,4 +1,6 @@
 import luigi
+import os
+from neomodel import config as neoconfig
 
 from config import settings
 from geo import LoadAllGeo
@@ -22,4 +24,6 @@ class MainTask(luigi.WrapperTask):
 
 
 if __name__ == "__main__":
+    neoconfig.DATABASE_URL = 'bolt://%s:%s@localhost:7687' % (settings['neo4j']['user'], settings['neo4j']['password'])
+
     luigi.run()

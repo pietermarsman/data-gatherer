@@ -4,3 +4,6 @@ io:
 google_drive:
   client_id: "<client_id>"
   client_secret: "<client_secret>"
+neo4j:
+  user: "<neo4j user>"
+  password: "neo4j password>"
